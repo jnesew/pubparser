@@ -66,6 +66,20 @@ def main(argv: list[str] | None = None) -> int:
     info.add_argument("book", type=Path)
     info.add_argument("--json", action="store_true", dest="as_json")
 
+    metadata = sub.add_parser("metadata", help="show package metadata")
+    metadata.add_argument("book", type=Path)
+    metadata.add_argument("--json", action="store_true", dest="as_json")
+
+    spine = sub.add_parser("spine", help="show package reading order")
+    spine.add_argument("book", type=Path)
+    spine.add_argument("--json", action="store_true", dest="as_json")
+
+    files = sub.add_parser("files", help="list manifest resources")
+    files.add_argument("book", type=Path)
+    files.add_argument("--media-type")
+    files.add_argument("--property")
+    files.add_argument("--json", action="store_true", dest="as_json")
+
     toc = sub.add_parser("toc", help="show normalized table of contents")
     toc.add_argument("book", type=Path)
     toc.add_argument("--json", action="store_true", dest="as_json")
@@ -95,6 +109,83 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Navigation: {data['navigation_source'] or 'none'} ({data['toc_entries']} top-level entries)")
             print(f"Cover: {data['cover_id'] or 'none'}")
             print(f"Encrypted resources: {data['encrypted_resources']}")
+        return 0
+
+    if args.command == "metadata":
+        with open_epub(args.book) as book:
+            data = {
+                "dc": [
+                    {"name": item.name, "value": item.value, "id": item.id, "attributes": dict(item.attributes)}
+                    for item in book.metadata.values
+                ],
+                "meta": [
+                    {
+                        "property": item.property, "value": item.value, "id": item.id,
+                        "refines": item.refines, "scheme": item.scheme,
+                        "name": item.name, "content": item.content,
+                        "attributes": dict(item.attributes),
+                    }
+                    for item in book.metadata.meta
+                ],
+            }
+            if args.as_json:
+                print(json.dumps(data, ensure_ascii=False, indent=2))
+            else:
+                for item in book.metadata.values:
+                    suffix = f" [{item.id}]" if item.id else ""
+                    print(f"{item.name}{suffix}: {item.value}")
+                for item in book.metadata.meta:
+                    key = item.property or item.name or "meta"
+                    suffix = f" refines={item.refines}" if item.refines else ""
+                    print(f"{key}{suffix}: {item.value}")
+        return 0
+
+    if args.command == "spine":
+        with open_epub(args.book) as book:
+            data = [
+                {
+                    "position": item.position,
+                    "idref": item.idref,
+                    "linear": item.linear,
+                    "properties": sorted(item.properties),
+                    "href": item.resource.href if item.resource else None,
+                    "media_type": item.resource.media_type if item.resource else None,
+                }
+                for item in book.spine
+            ]
+            if args.as_json:
+                print(json.dumps(data, ensure_ascii=False, indent=2))
+            else:
+                for item in data:
+                    marker = "linear" if item["linear"] else "non-linear"
+                    print(f"{item['position']:>4} {item['idref']} [{marker}] -> {item['href'] or '<missing>'}")
+        return 0
+
+    if args.command == "files":
+        with open_epub(args.book) as book:
+            resources = tuple(book.resources)
+            if args.media_type:
+                resources = tuple(resource for resource in resources if resource.media_type == args.media_type)
+            if args.property:
+                resources = tuple(resource for resource in resources if args.property in resource.properties)
+            data = [
+                {
+                    "id": resource.id,
+                    "href": resource.href,
+                    "path": resource.resolved_path if not resource.is_remote else None,
+                    "media_type": resource.media_type,
+                    "properties": sorted(resource.properties),
+                    "remote": resource.is_remote,
+                    "exists": resource.exists,
+                }
+                for resource in resources
+            ]
+            if args.as_json:
+                print(json.dumps(data, ensure_ascii=False, indent=2))
+            else:
+                for item in data:
+                    props = f" properties={','.join(item['properties'])}" if item["properties"] else ""
+                    print(f"{item['id']}\t{item['media_type']}\t{item['href']}{props}")
         return 0
 
     if args.command == "toc":
