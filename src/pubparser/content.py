@@ -149,6 +149,8 @@ class _CompatTreeBuilder(HTMLParser):
     def _prepare_start(self, tag: str) -> None:
         if tag in _BLOCK or tag in _HEADING:
             self._close_open(lambda open_tag: open_tag == "p")
+        if tag in _BLOCK:
+            self._close_open(lambda open_tag: open_tag in _HEADING)
         if tag == "li":
             self._close_open(lambda open_tag: open_tag == "li")
         if tag in _HEADING:
