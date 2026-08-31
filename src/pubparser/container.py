@@ -7,6 +7,7 @@ from .errors import ContainerError, UnsafeArchiveError
 from .xmlutil import local_name, parse_xml_safely
 
 CONTAINER_PATH = "META-INF/container.xml"
+CONTAINER_NS = "urn:oasis:names:tc:opendocument:xmlns:container"
 EPUB_MEDIA_TYPE = "application/oebps-package+xml"
 
 
@@ -35,8 +36,10 @@ def parse_container(archive: EpubArchive) -> Container:
         raise ContainerError(f"missing {CONTAINER_PATH}")
     try:
         data = archive.read_bytes(CONTAINER_PATH, max_size=archive.limits.max_xml_size)
-        root = parse_xml_safely(data, resource=CONTAINER_PATH)
+        root = parse_xml_safely(data, resource=CONTAINER_PATH, max_depth=archive.limits.max_xml_depth)
     except Exception as exc:
+        if isinstance(exc, ContainerError):
+            raise
         raise ContainerError(str(exc)) from exc
 
     rootfiles: list[Rootfile] = []
