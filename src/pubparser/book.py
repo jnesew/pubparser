@@ -11,6 +11,7 @@ from .encryption import parse_encryption
 from .models import Cover, EncryptionInfo, ExtractedDocument, Navigation, NormalizationResult, Package
 from .navigation import parse_navigation
 from .package import parse_package
+from .resources import ResourceCollection
 from .security import DEFAULT_LIMITS, SecurityLimits
 from .semantics import detect_cover
 from .validation import validate_book
@@ -30,6 +31,7 @@ class EpubBook:
         self._archive = archive
         self.container = container
         self.package = package
+        self.resources = ResourceCollection(archive, package.manifest)
         self.navigation = navigation
         self.encryption = encryption
         self.cover = cover
@@ -54,10 +56,10 @@ class EpubBook:
         return self.package.spine
 
     def read_resource(self, manifest_id: str) -> bytes:
-        item = self.package.manifest_by_id(manifest_id)
-        if item is None:
+        resource = self.resources.by_id(manifest_id)
+        if resource is None:
             raise KeyError(manifest_id)
-        return self._archive.read_bytes(item.resolved_path)
+        return resource.read_bytes()
 
     def extract_document(self, manifest_id: str, *, structured: bool = True) -> ExtractedDocument:
         item = self.package.manifest_by_id(manifest_id)
