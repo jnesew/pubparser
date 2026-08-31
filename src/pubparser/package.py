@@ -14,7 +14,9 @@ from .models import (
     SpineItem,
 )
 from .uri import resolve_reference
-from .xmlutil import local_name, parse_xml_safely
+from .xmlutil import local_name, namespace_uri, parse_xml_safely
+
+DC_NS = "http://purl.org/dc/elements/1.1/"
 
 DC_ELEMENTS = {
     "title", "creator", "contributor", "language", "identifier", "publisher",
@@ -59,7 +61,7 @@ def parse_package(archive: EpubArchive, package_path: str) -> tuple[Package, tup
     if metadata_elem is not None:
         for elem in metadata_elem:
             name = local_name(elem.tag)
-            if name in DC_ELEMENTS:
+            if name in DC_ELEMENTS and namespace_uri(elem.tag) == DC_NS:
                 value = "".join(elem.itertext()).strip()
                 attrs = tuple(sorted((k, v) for k, v in elem.attrib.items()))
                 metadata_values.append(MetadataValue(name, value, elem.get("id"), attrs))
