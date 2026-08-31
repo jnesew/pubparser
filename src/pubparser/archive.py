@@ -2,11 +2,14 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from pathlib import Path, PurePosixPath
+import re
 from typing import BinaryIO, Iterator
 from zipfile import BadZipFile, ZipFile, ZipInfo
 
 from .errors import InvalidArchiveError, ResourceError, UnsafeArchiveError
 from .security import DEFAULT_LIMITS, SecurityLimits
+
+_DRIVE_PATH = re.compile(r"^[A-Za-z]:")
 
 
 def normalize_archive_path(name: str) -> str:
@@ -16,6 +19,8 @@ def normalize_archive_path(name: str) -> str:
         if "\\" in name:
             raise UnsafeArchiveError(f"archive path uses backslashes: {name!r}")
         raise UnsafeArchiveError("archive path is empty")
+    if _DRIVE_PATH.match(name):
+        raise UnsafeArchiveError(f"drive-qualified archive path: {name!r}")
     path = PurePosixPath(name)
     if path.is_absolute():
         raise UnsafeArchiveError(f"absolute archive path: {name!r}")
@@ -127,9 +132,9 @@ class EpubArchive:
         entries: dict[str, ZipInfo] = {}
         total = 0
         for info in infos:
+            normalized = normalize_archive_path(info.filename.rstrip("/") if info.is_dir() else info.filename)
             if info.is_dir():
                 continue
-            normalized = normalize_archive_path(info.filename)
             if normalized in entries:
                 raise UnsafeArchiveError(f"duplicate archive path after normalization: {normalized}")
             if info.file_size < 0 or info.compress_size < 0:
