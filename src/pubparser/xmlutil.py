@@ -18,10 +18,18 @@ def namespace_uri(tag: str) -> str | None:
     return None
 
 
-def parse_xml_safely(data: bytes, *, resource: str = "XML document") -> ET.Element:
+def parse_xml_safely(data: bytes, *, resource: str = "XML document", max_depth: int = 256) -> ET.Element:
     if _FORBIDDEN_XML.search(data):
         raise EpubError(f"unsafe XML declaration in {resource}")
     try:
-        return ET.fromstring(data)
+        root = ET.fromstring(data)
     except ET.ParseError as exc:
         raise EpubError(f"malformed XML in {resource}: {exc}") from exc
+
+    stack = [(root, 1)]
+    while stack:
+        elem, depth = stack.pop()
+        if depth > max_depth:
+            raise EpubError(f"XML nesting depth exceeds limit in {resource}")
+        stack.extend((child, depth + 1) for child in elem)
+    return root
