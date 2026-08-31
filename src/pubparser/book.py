@@ -3,11 +3,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import BinaryIO
 
-from .archive import EpubArchive
+from .archive import EpubArchive, normalize_archive_path
 from .container import Container, parse_container
 from .content import extract_xhtml
-from .diagnostics import Diagnostic
+from .diagnostics import Diagnostic, Severity
 from .encryption import parse_encryption
+from .errors import ContainerError, ValidationError
+from .modes import ParsingMode, coerce_parsing_mode
 from .models import Cover, EncryptionInfo, ExtractedDocument, Navigation, NormalizationResult, Package
 from .navigation import parse_navigation
 from .package import parse_package
@@ -27,6 +29,7 @@ class EpubBook:
         encryption: EncryptionInfo,
         cover: Cover | None,
         diagnostics: tuple[Diagnostic, ...],
+        mode: ParsingMode,
     ):
         self._archive = archive
         self.container = container
@@ -36,6 +39,7 @@ class EpubBook:
         self.encryption = encryption
         self.cover = cover
         self.diagnostics = diagnostics
+        self.mode = mode
 
     def __enter__(self) -> "EpubBook":
         return self
@@ -91,16 +95,52 @@ class EpubBook:
         self._archive.close()
 
 
-def open_epub(source: str | Path | BinaryIO, *, limits: SecurityLimits = DEFAULT_LIMITS) -> EpubBook:
+def _select_rootfile(container: Container, selection: int | str | None):
+    if selection is None:
+        return container.default_rootfile
+    if isinstance(selection, int):
+        try:
+            return container.rootfiles[selection]
+        except IndexError as exc:
+            raise ContainerError(f"rootfile index out of range: {selection}") from exc
+    try:
+        requested = normalize_archive_path(selection)
+    except Exception as exc:
+        raise ContainerError(f"invalid rootfile selection: {selection!r}") from exc
+    for rootfile in container.rootfiles:
+        if rootfile.full_path == requested:
+            return rootfile
+    raise ContainerError(f"rootfile is not declared by container.xml: {selection}")
+
+
+def open_epub(
+    source: str | Path | BinaryIO,
+    *,
+    limits: SecurityLimits = DEFAULT_LIMITS,
+    mode: ParsingMode | str = ParsingMode.NORMAL,
+    rootfile: int | str | None = None,
+) -> EpubBook:
+    parsing_mode = coerce_parsing_mode(mode)
     archive = EpubArchive(source, limits=limits).open()
     try:
         container = parse_container(archive)
-        package, package_diagnostics = parse_package(archive, container.default_rootfile.full_path)
+        selected_rootfile = _select_rootfile(container, rootfile)
+        package, package_diagnostics = parse_package(archive, selected_rootfile.full_path, mode=parsing_mode)
         encryption, encryption_diagnostics = parse_encryption(archive)
         navigation, navigation_diagnostics = parse_navigation(archive, package)
         cover, cover_diagnostics = detect_cover(package)
         diagnostics = package_diagnostics + encryption_diagnostics + navigation_diagnostics + cover_diagnostics
-        return EpubBook(archive, container, package, navigation, encryption, cover, diagnostics)
+        book = EpubBook(archive, container, package, navigation, encryption, cover, diagnostics, parsing_mode)
+        if parsing_mode is ParsingMode.STRICT:
+            issues = book.validate()
+            failures = tuple(issue for issue in issues if issue.severity in {Severity.ERROR, Severity.FATAL})
+            if failures:
+                book.close()
+                raise ValidationError(
+                    f"strict parsing rejected EPUB with {len(failures)} error(s)",
+                    issues=issues,
+                )
+        return book
     except Exception:
         archive.close()
         raise
