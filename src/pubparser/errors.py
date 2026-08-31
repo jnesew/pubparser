@@ -31,7 +31,11 @@ class ResourceError(EpubError):
 
 
 class ValidationError(EpubError):
-    """Validation could not be completed."""
+    """Validation failed or strict parsing rejected the publication."""
+
+    def __init__(self, message: str, *, issues=()):
+        super().__init__(message)
+        self.issues = tuple(issues)
 
 
 class UnsupportedFeatureError(EpubError):
