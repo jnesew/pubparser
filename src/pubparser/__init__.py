@@ -12,11 +12,13 @@ from .errors import (
     UnsupportedFeatureError,
     ValidationError,
 )
+from .models import ContentBlock, Cover, EncryptedResource, EncryptionInfo, ExtractedDocument, Navigation, NavigationEntry, NavigationList, NormalizationResult
+from .normalizers import ProjectGutenbergNormalizer, normalize_project_gutenberg
 from .security import DEFAULT_LIMITS, SecurityLimits
 
 __all__ = [
-    "ArchiveError", "ContainerError", "DEFAULT_LIMITS", "Diagnostic", "EpubBook",
-    "EpubError", "InvalidArchiveError", "NavigationError", "PackageError",
-    "ResourceError", "SecurityLimits", "Severity", "UnsafeArchiveError",
-    "UnsupportedFeatureError", "ValidationError", "open_epub",
+    "ArchiveError", "ContainerError", "ContentBlock", "Cover", "DEFAULT_LIMITS", "Diagnostic", "EpubBook",
+    "EncryptedResource", "EncryptionInfo", "EpubError", "ExtractedDocument", "InvalidArchiveError", "Navigation", "NavigationEntry", "NavigationError",
+    "NavigationList", "NormalizationResult", "PackageError", "ProjectGutenbergNormalizer", "ResourceError", "SecurityLimits", "Severity",
+    "UnsafeArchiveError", "UnsupportedFeatureError", "ValidationError", "normalize_project_gutenberg", "open_epub",
 ]
