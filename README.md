@@ -45,6 +45,25 @@ with open_epub("book.epub") as book:
             print(entry.label, entry.href)
 ```
 
+Parsing behavior is explicit. `normal` is the default, `compatibility` enables conservative recovery for selected malformed EPUB structures, and `strict` rejects validation errors without relaxing any security checks:
+
+```python
+from pubparser import ParsingMode, open_epub
+
+with open_epub("book.epub", mode=ParsingMode.STRICT) as book:
+    ...
+```
+
+For EPUB containers that declare multiple package documents, callers may select a rootfile by declared index or path:
+
+```python
+with open_epub("book.epub", rootfile=1) as alternate:
+    ...
+
+with open_epub("book.epub", rootfile="EPUB/alternate.opf") as alternate:
+    ...
+```
+
 Manifest resources are exposed through lazy handles and never trigger network access:
 
 ```python
