@@ -174,6 +174,8 @@ class ExtractedDocument:
     resource: ManifestItem
     text: str
     blocks: tuple[ContentBlock, ...] = ()
+    title: str | None = None
+    title_source: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
