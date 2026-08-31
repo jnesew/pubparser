@@ -3,6 +3,7 @@ from __future__ import annotations
 from .archive import EpubArchive
 from .diagnostics import Diagnostic, Severity
 from .errors import PackageError, ResourceError
+from .modes import ParsingMode
 from .models import (
     GuideReference,
     ManifestItem,
@@ -40,7 +41,7 @@ def _meta_value(elem) -> MetaProperty:
     )
 
 
-def parse_package(archive: EpubArchive, package_path: str) -> tuple[Package, tuple[Diagnostic, ...]]:
+def parse_package(archive: EpubArchive, package_path: str, *, mode: ParsingMode = ParsingMode.NORMAL) -> tuple[Package, tuple[Diagnostic, ...]]:
     if not archive.exists(package_path):
         raise PackageError(f"package document not found: {package_path}")
     try:
@@ -61,10 +62,19 @@ def parse_package(archive: EpubArchive, package_path: str) -> tuple[Package, tup
     if metadata_elem is not None:
         for elem in metadata_elem:
             name = local_name(elem.tag)
-            if name in DC_ELEMENTS and namespace_uri(elem.tag) == DC_NS:
-                value = "".join(elem.itertext()).strip()
-                attrs = tuple(sorted((k, v) for k, v in elem.attrib.items()))
-                metadata_values.append(MetadataValue(name, value, elem.get("id"), attrs))
+            if name in DC_ELEMENTS:
+                namespace = namespace_uri(elem.tag)
+                if namespace == DC_NS or mode is ParsingMode.COMPATIBILITY:
+                    if namespace != DC_NS:
+                        diagnostics.append(Diagnostic(
+                            Severity.WARNING,
+                            "EPUB_COMPAT_DC_NAMESPACE",
+                            f"Treating non-Dublin-Core <{name}> as dc:{name} in compatibility mode",
+                            package_path,
+                        ))
+                    value = "".join(elem.itertext()).strip()
+                    attrs = tuple(sorted((k, v) for k, v in elem.attrib.items()))
+                    metadata_values.append(MetadataValue(name, value, elem.get("id"), attrs))
             elif name == "meta":
                 metadata_meta.append(_meta_value(elem))
 
