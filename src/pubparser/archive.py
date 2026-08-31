@@ -10,6 +10,8 @@ from .security import DEFAULT_LIMITS, SecurityLimits
 
 
 def normalize_archive_path(name: str) -> str:
+    if "\x00" in name:
+        raise UnsafeArchiveError("archive path contains NUL")
     if not name or "\\" in name:
         if "\\" in name:
             raise UnsafeArchiveError(f"archive path uses backslashes: {name!r}")
@@ -56,6 +58,7 @@ class EpubArchive:
             infos = archive.infolist()
         except (BadZipFile, OSError) as exc:
             raise InvalidArchiveError(str(exc)) from exc
+
         try:
             self._entries = self._validate_entries(infos)
         except Exception:
@@ -120,6 +123,7 @@ class EpubArchive:
     def _validate_entries(self, infos: list[ZipInfo]) -> dict[str, ZipInfo]:
         if len(infos) > self.limits.max_entries:
             raise UnsafeArchiveError("archive entry count exceeds limit")
+
         entries: dict[str, ZipInfo] = {}
         total = 0
         for info in infos:
