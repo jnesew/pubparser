@@ -71,9 +71,28 @@ class EpubBook:
             raise KeyError(manifest_id)
         if item.media_type not in {"application/xhtml+xml", "text/html"}:
             raise ValueError(f"resource {manifest_id!r} is not an XHTML/HTML document")
-        return extract_xhtml(self._archive.read_bytes(item.resolved_path), item, structured=structured, max_depth=self._archive.limits.max_xml_depth)
+        return extract_xhtml(
+            self._archive.read_bytes(item.resolved_path),
+            item,
+            structured=structured,
+            max_depth=self._archive.limits.max_xml_depth,
+            mode=self.mode,
+        )
 
-    def iter_text(self, *, linear_only: bool = True, structured: bool = True, normalization: NormalizationResult | None = None):
+    def iter_documents(
+        self,
+        *,
+        linear_only: bool = True,
+        structured: bool = True,
+        normalization: NormalizationResult | None = None,
+    ):
+        """Yield spine documents in publication order.
+
+        Each document includes a derived title using the first meaningful H1,
+        then H2, then the document TITLE element, with the manifest id as a
+        deterministic fallback. Resources remain lazy and are read one spine
+        item at a time.
+        """
         spine = self.package.linear_spine if linear_only else self.package.spine
         for spine_item in spine:
             resource = spine_item.resource
@@ -82,11 +101,57 @@ class EpubBook:
             document = self.extract_document(resource.id, structured=structured)
             if normalization is not None:
                 cleaned = normalization.apply(resource.id, document.text)
-                document = ExtractedDocument(resource=document.resource, text=cleaned, blocks=document.blocks)
+                document = ExtractedDocument(
+                    resource=document.resource,
+                    text=cleaned,
+                    blocks=document.blocks,
+                    title=document.title,
+                    title_source=document.title_source,
+                )
             yield document
 
-    def extract_text(self, *, linear_only: bool = True, structured: bool = True, normalization: NormalizationResult | None = None) -> tuple[ExtractedDocument, ...]:
-        return tuple(self.iter_text(linear_only=linear_only, structured=structured, normalization=normalization))
+    def extract_documents(
+        self,
+        *,
+        linear_only: bool = True,
+        structured: bool = True,
+        normalization: NormalizationResult | None = None,
+    ) -> tuple[ExtractedDocument, ...]:
+        return tuple(
+            self.iter_documents(
+                linear_only=linear_only,
+                structured=structured,
+                normalization=normalization,
+            )
+        )
+
+    def iter_text(
+        self,
+        *,
+        linear_only: bool = True,
+        structured: bool = True,
+        normalization: NormalizationResult | None = None,
+    ):
+        """Backward-compatible alias for :meth:`iter_documents`."""
+        yield from self.iter_documents(
+            linear_only=linear_only,
+            structured=structured,
+            normalization=normalization,
+        )
+
+    def extract_text(
+        self,
+        *,
+        linear_only: bool = True,
+        structured: bool = True,
+        normalization: NormalizationResult | None = None,
+    ) -> tuple[ExtractedDocument, ...]:
+        """Backward-compatible alias for :meth:`extract_documents`."""
+        return self.extract_documents(
+            linear_only=linear_only,
+            structured=structured,
+            normalization=normalization,
+        )
 
     def validate(self, *, include_parse_diagnostics: bool = True) -> tuple[Diagnostic, ...]:
         return validate_book(self, include_parse_diagnostics=include_parse_diagnostics)
