@@ -25,7 +25,8 @@ Current development target: **0.1**.
 - TOC, landmarks, page lists, and NCX nav lists;
 - EPUB 2/3 cover discovery;
 - lazy `ResourceCollection` access with bytes, streams, text decoding, and manifest filters;
-- plain and structured XHTML text extraction;
+- plain and structured XHTML text extraction with document-title derivation;
+- compatibility-mode recovery for common benign malformed HTML/XHTML without relaxing security checks;
 - conservative Project Gutenberg header/footer normalization;
 - `encryption.xml` inspection and font-obfuscation recognition;
 - structural validation and typed diagnostics;
@@ -45,7 +46,7 @@ with open_epub("book.epub") as book:
             print(entry.label, entry.href)
 ```
 
-Parsing behavior is explicit. `normal` is the default, `compatibility` enables conservative recovery for selected malformed EPUB structures, and `strict` rejects validation errors without relaxing any security checks:
+Parsing behavior is explicit. `normal` is the default, `compatibility` enables conservative recovery for selected malformed EPUB structures and common benign malformed HTML/XHTML, and `strict` rejects validation errors without relaxing any security checks:
 
 ```python
 from pubparser import ParsingMode, open_epub
@@ -76,14 +77,17 @@ with open_epub("book.epub") as book:
 
 Remote manifest resources remain inspectable as metadata, but `read_bytes()`, `open()`, and `read_text()` refuse to fetch them.
 
-Text extraction is spine-ordered and lazy when using `iter_text()`:
+Document extraction is spine-ordered and lazy. `iter_documents()` derives a stable display title from the first meaningful `h1`, then `h2`, then the document `title` element, falling back to the manifest resource id. `title_source` records which rule supplied the title:
 
 ```python
 with open_epub("book.epub") as book:
-    for document in book.iter_text():
+    for document in book.iter_documents():
+        print(document.title, document.title_source)
         print(document.resource.href)
         print(document.text)
 ```
+
+`iter_text()` and `extract_text()` remain compatible aliases for the earlier API; `extract_documents()` is the eager counterpart to `iter_documents()`.
 
 Project Gutenberg cleanup is explicit and auditable:
 
@@ -92,7 +96,7 @@ from pubparser import normalize_project_gutenberg, open_epub
 
 with open_epub("book.epub") as book:
     result = normalize_project_gutenberg(book)
-    for document in book.iter_text(normalization=result):
+    for document in book.iter_documents(normalization=result):
         print(document.text)
 ```
 
@@ -115,7 +119,7 @@ epubtool validate BOOK.epub
 
 ## Security model
 
-The core enforces archive entry, resource-size, total-expanded-size, expansion-ratio, XML-size, and XML-depth limits. Archive traversal, absolute paths, drive-qualified paths, backslash paths, NUL paths, duplicate normalized paths, unsafe XML entities/DTDs, malformed URI escapes, and EPUB-local references that escape the container root are rejected. A simple inert HTML5 doctype is permitted for XHTML content; DTD subsets and entity declarations remain rejected.
+The core enforces archive entry, resource-size, total-expanded-size, expansion-ratio, XML-size, and XML-depth limits. Archive traversal, absolute paths, drive-qualified paths, backslash paths, NUL paths, duplicate normalized paths, unsafe XML entities/DTDs, malformed URI escapes, and EPUB-local references that escape the container root are rejected. A simple inert HTML5 doctype is permitted for XHTML content; DTD subsets, entity declarations, and other markup declarations remain rejected even when compatibility-mode HTML recovery is used.
 
 Scripts are never executed and external resources are never fetched as part of parsing.
 
