@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
 from .book import open_epub
@@ -226,5 +227,16 @@ def main(argv: list[str] | None = None) -> int:
     return 2
 
 
+def entrypoint() -> int:
+    try:
+        return main()
+    except BrokenPipeError:
+        try:
+            sys.stdout.close()
+        except OSError:
+            pass
+        return 0
+
+
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(entrypoint())
