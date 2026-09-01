@@ -104,6 +104,44 @@ def test_compatibility_mode_recovers_common_malformed_html():
     assert any(block.kind == "heading" and block.text == "Chapter One" for block in document.blocks)
 
 
+@pytest.mark.parametrize(
+    "doctype",
+    [
+        "<!DOCTYPE html PUBLIC '-//W3C//DTD XHTML 1.1//EN' "
+        "'http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd'>",
+        '﻿<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" '
+        '"https://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">',
+    ],
+)
+def test_known_w3c_xhtml_doctypes_are_accepted(doctype):
+    markup = (
+        f'{doctype}<html xmlns="http://www.w3.org/1999/xhtml">'
+        '<body><h1>Chapter One</h1><p>Safe text.</p></body></html>'
+    )
+
+    document = first_document(make_epub(markup), mode="compatibility")
+
+    assert document.title == "Chapter One"
+    assert "Safe text." in document.text
+
+
+@pytest.mark.parametrize(
+    "doctype",
+    [
+        "<!DOCTYPE html SYSTEM 'https://example.invalid/custom.dtd'>",
+        "<!DOCTYPE html PUBLIC '-//Unknown//DTD XHTML 1.1//EN' "
+        "'http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd'>",
+        "<!DOCTYPE html PUBLIC '-//W3C//DTD XHTML 1.1//EN' "
+        "'http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd' [<!ENTITY boom 'expanded'>]>",
+    ],
+)
+def test_unknown_or_active_external_doctypes_remain_rejected(doctype):
+    markup = f"{doctype}<html><body><p>Unsafe</p></body></html>"
+    with open_epub(make_epub(markup), mode="compatibility") as book:
+        with pytest.raises(ResourceError, match="unsafe|cannot extract"):
+            next(book.iter_documents())
+
+
 def test_compatibility_mode_does_not_relax_unsafe_declaration_checks():
     unsafe = '''<!DOCTYPE html [<!ENTITY boom "expanded">]>
     <html><body><h1>Unsafe</h1><p>&boom;</p></body></html>'''

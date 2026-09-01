@@ -14,6 +14,12 @@ _WS = re.compile(r"[ \t\r\f\v]+")
 _BLANKS = re.compile(r"\n\s*\n+")
 _SKIP = {"script", "style", "noscript", "template"}
 _HTML5_DOCTYPE = re.compile(br"<!\s*DOCTYPE\s+html\s*>", re.IGNORECASE)
+_W3C_XHTML_DOCTYPE = re.compile(
+    br"""<!\s*DOCTYPE\s+html\s+PUBLIC\s+
+    ['\"]-//W3C//DTD\s+XHTML\s+(?:1\.0\s+(?:Strict|Transitional|Frameset)|1\.1)//EN['\"]\s+
+    ['\"]https?://www\.w3\.org/TR/xhtml(?:1/DTD/xhtml1-(?:strict|transitional|frameset)\.dtd|11/DTD/xhtml11\.dtd)['\"]\s*>""",
+    re.IGNORECASE | re.VERBOSE,
+)
 _UNSAFE_COMPAT_DECL = re.compile(br"<!\s*(?:DOCTYPE|ENTITY|ELEMENT|ATTLIST|NOTATION)\b", re.IGNORECASE)
 _XML_ENCODING = re.compile(br"<\?xml\s+[^>]*encoding\s*=\s*['\"]\s*([A-Za-z0-9._:-]+)\s*['\"]", re.IGNORECASE)
 _BLOCK = {
@@ -23,6 +29,16 @@ _BLOCK = {
 }
 _VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"}
 _HEADING = {f"h{level}" for level in range(1, 7)}
+
+
+def _strip_safe_content_doctype(data: bytes) -> bytes:
+    """Remove only the inert HTML5 and canonical W3C XHTML doctypes.
+
+    ElementTree does not need these declarations. Restricting the accepted
+    external identifiers keeps entity definitions, internal subsets, and
+    arbitrary external system identifiers on the existing rejection path.
+    """
+    return _W3C_XHTML_DOCTYPE.sub(b"", _HTML5_DOCTYPE.sub(b"", data))
 
 
 def _visible_text(elem) -> str:
@@ -200,7 +216,7 @@ class _CompatTreeBuilder(HTMLParser):
 
 
 def _parse_compat_html(data: bytes, resource: ManifestItem, *, max_depth: int):
-    safe_data = _HTML5_DOCTYPE.sub(b"", data)
+    safe_data = _strip_safe_content_doctype(data)
     if _UNSAFE_COMPAT_DECL.search(safe_data):
         raise ResourceError(f"unsafe markup declaration in {resource.resolved_path}")
     text = _decode_compat_markup(safe_data, resource)
@@ -222,7 +238,7 @@ def extract_xhtml(
     mode: ParsingMode | str = ParsingMode.NORMAL,
 ) -> ExtractedDocument:
     parsing_mode = coerce_parsing_mode(mode)
-    safe_data = _HTML5_DOCTYPE.sub(b"", data)
+    safe_data = _strip_safe_content_doctype(data)
     try:
         root = parse_xml_safely(safe_data, resource=resource.resolved_path, max_depth=max_depth)
     except Exception as exc:
