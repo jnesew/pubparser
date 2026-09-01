@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pubparser"
-version = "0.1.0.dev0"
+version = "0.1.0"
 description = "Safe, permissively licensed EPUB parsing toolkit"
 readme = "README.md"
 requires-python = ">=3.11"
