@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import codecs
 import re
+import unicodedata
 import xml.etree.ElementTree as ET
 from html.parser import HTMLParser
 
 from .errors import ResourceError
 from .modes import ParsingMode, coerce_parsing_mode
-from .models import ContentBlock, ExtractedDocument, ManifestItem
+from .models import ContentBlock, DocumentSemantic, ExtractedDocument, ManifestItem
 from .xmlutil import local_name, parse_xml_safely
 
 _WS = re.compile(r"[ \t\r\f\v]+")
@@ -29,6 +30,44 @@ _BLOCK = {
 }
 _VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"}
 _HEADING = {f"h{level}" for level in range(1, 7)}
+_EPUB_NS = "http://www.idpf.org/2007/ops"
+_TOC_TITLES = frozenset(
+    {
+        "contents",
+        "table of contents",
+        "contenido",
+        "contenidos",
+        "conteudo",
+        "cuprins",
+        "indice",
+        "indhold",
+        "indholdsfortegnelse",
+        "inhalt",
+        "inhaltsverzeichnis",
+        "innehall",
+        "innehallsforteckning",
+        "inhoud",
+        "inhoudsopgave",
+        "innhold",
+        "innholdsfortegnelse",
+        "oglavlenie",
+        "spis tresci",
+        "sisallys",
+        "sisallysluettelo",
+        "sommaire",
+        "sommario",
+        "soderzhanie",
+        "sumario",
+        "tabla de contenidos",
+        "table des matieres",
+        "tartalomjegyzek",
+        "оглавление",
+        "содержание",
+        "目录",
+        "目次",
+        "目錄",
+    }
+)
 
 
 def _strip_safe_content_doctype(data: bytes) -> bytes:
@@ -125,6 +164,47 @@ def _document_title(root, resource: ManifestItem) -> tuple[str, str]:
         if text:
             return text, "title"
     return resource.id, "resource-id"
+
+
+def _fold_semantic_text(value: str) -> str:
+    normalized = unicodedata.normalize("NFKD", value.casefold())
+    ascii_like = "".join(char for char in normalized if not unicodedata.combining(char))
+    return re.sub(r"[^\w]+", " ", ascii_like).strip()
+
+
+def _semantic_tokens(elem, name: str) -> frozenset[str]:
+    values = (
+        elem.get(name, ""),
+        elem.get(f"{{{_EPUB_NS}}}{name}", ""),
+        elem.get(f"epub:{name}", ""),
+    )
+    return frozenset(token.casefold() for value in values for token in value.split())
+
+
+def _document_semantics(root, title: str) -> tuple[DocumentSemantic, ...]:
+    body = next((elem for elem in root.iter() if local_name(elem.tag).lower() == "body"), root)
+    for elem in body.iter():
+        if "toc" in _semantic_tokens(elem, "type") or "doc-toc" in _semantic_tokens(elem, "role"):
+            return (DocumentSemantic("toc", 1.0, ("xhtml-semantic-marker",)),)
+
+    title_is_toc = _fold_semantic_text(title) in _TOC_TITLES
+    anchors = [
+        elem
+        for elem in body.iter()
+        if local_name(elem.tag).lower() == "a" and elem.get("href") and _normalize_inline(_visible_text(elem))
+    ]
+    list_items = sum(1 for elem in body.iter() if local_name(elem.tag).lower() == "li")
+    visible = _normalize_inline(_visible_text(body))
+    linked_characters = sum(len(_normalize_inline(_visible_text(elem))) for elem in anchors)
+    link_density = linked_characters / max(1, len(visible))
+
+    if title_is_toc and len(anchors) >= 3 and (list_items >= 3 or link_density >= 0.35):
+        return (DocumentSemantic("toc", 0.9, ("toc-title", "link-list-pattern")),)
+    if title_is_toc:
+        return (DocumentSemantic("toc", 0.65, ("toc-title",)),)
+    if len(anchors) >= 8 and list_items >= 5 and link_density >= 0.65:
+        return (DocumentSemantic("toc", 0.75, ("dense-link-list",)),)
+    return ()
 
 
 def _decode_compat_markup(data: bytes, resource: ManifestItem) -> str:
@@ -255,4 +335,5 @@ def extract_xhtml(
         blocks=blocks,
         title=title,
         title_source=title_source,
+        semantics=_document_semantics(root, title),
     )

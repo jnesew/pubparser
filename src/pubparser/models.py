@@ -170,12 +170,37 @@ class ContentBlock:
 
 
 @dataclass(frozen=True, slots=True)
+class DocumentSemantic:
+    """A non-destructive semantic classification for an extracted document."""
+
+    role: str
+    confidence: float
+    evidence: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not self.role:
+            raise ValueError("document semantic role cannot be empty")
+        if not 0.0 <= self.confidence <= 1.0:
+            raise ValueError("document semantic confidence must be between 0.0 and 1.0")
+
+
+@dataclass(frozen=True, slots=True)
 class ExtractedDocument:
     resource: ManifestItem
     text: str
     blocks: tuple[ContentBlock, ...] = ()
     title: str | None = None
     title_source: str | None = None
+    semantics: tuple[DocumentSemantic, ...] = ()
+
+    def semantic(self, role: str) -> DocumentSemantic | None:
+        """Return the strongest semantic classification for ``role``."""
+        candidates = (item for item in self.semantics if item.role == role)
+        return max(candidates, key=lambda item: item.confidence, default=None)
+
+    def has_semantic(self, role: str, *, minimum_confidence: float = 0.0) -> bool:
+        match = self.semantic(role)
+        return match is not None and match.confidence >= minimum_confidence
 
 
 @dataclass(frozen=True, slots=True)

@@ -2,7 +2,7 @@
 
 `pubparser` is a small, safe, permissively licensed EPUB parsing toolkit. It focuses on structural parsing, inspection, extraction, validation, and conservative source normalization without becoming a browser or rendering engine.
 
-Current development target: **0.1**.
+Current development target: **0.2**.
 
 ## Principles
 
@@ -26,6 +26,7 @@ Current development target: **0.1**.
 - EPUB 2/3 cover discovery;
 - lazy `ResourceCollection` access with bytes, streams, text decoding, and manifest filters;
 - plain and structured XHTML text extraction with document-title derivation;
+- non-destructive document semantics with confidence and evidence, including conservative TOC identification;
 - compatibility-mode recovery for common benign malformed HTML/XHTML without relaxing security checks;
 - conservative Project Gutenberg header/footer normalization;
 - `encryption.xml` inspection and font-obfuscation recognition;
@@ -83,6 +84,8 @@ Document extraction is spine-ordered and lazy. `iter_documents()` derives a stab
 with open_epub("book.epub") as book:
     for document in book.iter_documents():
         print(document.title, document.title_source)
+        if document.has_semantic("toc", minimum_confidence=0.9):
+            continue
         print(document.resource.href)
         print(document.text)
 ```

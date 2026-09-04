@@ -1,7 +1,50 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 from .diagnostics import Diagnostic, Severity
-from .models import Cover, Package
+from .models import Cover, DocumentSemantic, ExtractedDocument, Navigation, Package
+
+
+def _merge_semantic(
+    document: ExtractedDocument,
+    role: str,
+    confidence: float,
+    evidence: str,
+) -> ExtractedDocument:
+    existing = document.semantic(role)
+    if existing is None:
+        semantic = DocumentSemantic(role, confidence, (evidence,))
+        return replace(document, semantics=document.semantics + (semantic,))
+
+    merged = DocumentSemantic(
+        role=role,
+        confidence=max(existing.confidence, confidence),
+        evidence=tuple(dict.fromkeys((*existing.evidence, evidence))),
+    )
+    return replace(
+        document,
+        semantics=tuple(item for item in document.semantics if item.role != role) + (merged,),
+    )
+
+
+def classify_document(
+    package: Package,
+    navigation: Navigation | None,
+    document: ExtractedDocument,
+) -> ExtractedDocument:
+    """Augment markup semantics with package-level, non-destructive hints."""
+    resource = document.resource
+    classified = document
+    if "nav" in resource.properties:
+        classified = _merge_semantic(classified, "toc", 1.0, "manifest-nav-property")
+    if navigation is not None and navigation.source_path == resource.resolved_path:
+        classified = _merge_semantic(classified, "toc", 1.0, "navigation-source")
+    for reference in package.guide:
+        reference_types = {token.casefold() for token in reference.type.split()}
+        if reference.resolved_path == resource.resolved_path and reference_types & {"toc", "contents"}:
+            classified = _merge_semantic(classified, "toc", 0.98, "package-guide-reference")
+    return classified
 
 
 def detect_cover(package: Package) -> tuple[Cover | None, tuple[Diagnostic, ...]]:
