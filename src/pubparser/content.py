@@ -183,9 +183,20 @@ def _semantic_tokens(elem, name: str) -> frozenset[str]:
 
 def _document_semantics(root, title: str) -> tuple[DocumentSemantic, ...]:
     body = next((elem for elem in root.iter() if local_name(elem.tag).lower() == "body"), root)
-    for elem in body.iter():
-        if "toc" in _semantic_tokens(elem, "type") or "doc-toc" in _semantic_tokens(elem, "role"):
+    body_text = _normalize_inline(_visible_text(body))
+    marked = [
+        elem
+        for elem in body.iter()
+        if "toc" in _semantic_tokens(elem, "type") or "doc-toc" in _semantic_tokens(elem, "role")
+    ]
+    if marked:
+        coverage = max(
+            len(_normalize_inline(_visible_text(elem))) / max(1, len(body_text))
+            for elem in marked
+        )
+        if coverage >= 0.8:
             return (DocumentSemantic("toc", 1.0, ("xhtml-semantic-marker",)),)
+        return (DocumentSemantic("toc", 0.6, ("xhtml-toc-fragment",)),)
 
     title_is_toc = _fold_semantic_text(title) in _TOC_TITLES
     anchors = [
@@ -194,11 +205,11 @@ def _document_semantics(root, title: str) -> tuple[DocumentSemantic, ...]:
         if local_name(elem.tag).lower() == "a" and elem.get("href") and _normalize_inline(_visible_text(elem))
     ]
     list_items = sum(1 for elem in body.iter() if local_name(elem.tag).lower() == "li")
-    visible = _normalize_inline(_visible_text(body))
+    visible = body_text
     linked_characters = sum(len(_normalize_inline(_visible_text(elem))) for elem in anchors)
     link_density = linked_characters / max(1, len(visible))
 
-    if title_is_toc and len(anchors) >= 3 and (list_items >= 3 or link_density >= 0.35):
+    if title_is_toc and len(anchors) >= 3 and link_density >= 0.35:
         return (DocumentSemantic("toc", 0.9, ("toc-title", "link-list-pattern")),)
     if title_is_toc:
         return (DocumentSemantic("toc", 0.65, ("toc-title",)),)

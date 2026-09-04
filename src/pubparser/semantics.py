@@ -43,7 +43,10 @@ def classify_document(
     for reference in package.guide:
         reference_types = {token.casefold() for token in reference.type.split()}
         if reference.resolved_path == resource.resolved_path and reference_types & {"toc", "contents"}:
-            classified = _merge_semantic(classified, "toc", 0.98, "package-guide-reference")
+            if reference.fragment:
+                classified = _merge_semantic(classified, "toc", 0.6, "package-guide-fragment")
+            else:
+                classified = _merge_semantic(classified, "toc", 0.98, "package-guide-reference")
     return classified
 
 

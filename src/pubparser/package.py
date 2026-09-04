@@ -151,10 +151,12 @@ def parse_package(archive: EpubArchive, package_path: str, *, mode: ParsingMode 
             try:
                 resolved = resolve_reference(package_path, href)
                 resolved_path = resolved.path if resolved.kind in {"internal", "fragment"} else None
+                fragment = resolved.fragment
             except ResourceError:
                 resolved_path = None
+                fragment = None
                 diagnostics.append(Diagnostic(Severity.WARNING, "EPUB_INVALID_GUIDE_HREF", f"Invalid guide reference: {href}", package_path))
-            guide.append(GuideReference(ref_type, href, resolved_path, elem.get("title")))
+            guide.append(GuideReference(ref_type, href, resolved_path, elem.get("title"), fragment))
 
     package = Package(
         version=root.get("version"),

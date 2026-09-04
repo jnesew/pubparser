@@ -92,6 +92,7 @@ class GuideReference:
     href: str
     resolved_path: str | None
     title: str | None = None
+    fragment: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

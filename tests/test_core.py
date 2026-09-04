@@ -310,6 +310,26 @@ def test_toc_title_without_structural_evidence_remains_low_confidence():
         assert not document.has_semantic("toc", minimum_confidence=0.9)
 
 
+def test_toc_fragment_does_not_classify_a_mixed_document_as_dedicated_toc():
+    opf = '''<package xmlns="http://www.idpf.org/2007/opf" version="2.0">
+ <metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>Mixed</dc:title></metadata>
+ <manifest><item id="mixed" href="mixed.xhtml" media-type="application/xhtml+xml"/></manifest>
+ <spine><itemref idref="mixed"/></spine>
+ <guide><reference type="toc" title="Contents" href="mixed.xhtml#contents"/></guide></package>'''
+    mixed = '''<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><body>
+      <nav id="contents" epub:type="toc"><h1>Contents</h1><a href="#one">One</a></nav>
+      <article><h1 id="one">Chapter One</h1><p>This is a long narrative passage that must not be
+      classified as an entire table-of-contents document merely because a marked TOC fragment precedes it.</p></article>
+    </body></html>'''
+    with open_epub(make_custom_epub(opf, {"mixed.xhtml": mixed})) as book:
+        document = next(book.iter_documents())
+        semantic = document.semantic("toc")
+        assert semantic is not None
+        assert semantic.confidence == 0.6
+        assert set(semantic.evidence) == {"xhtml-toc-fragment", "package-guide-fragment"}
+        assert not document.has_semantic("toc", minimum_confidence=0.9)
+
+
 def test_validation_reports_missing_resource_and_required_metadata():
     opf = '''<package xmlns="http://www.idpf.org/2007/opf" version="3.0">
  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>Validation</dc:title></metadata>
