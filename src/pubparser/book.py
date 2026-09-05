@@ -15,7 +15,7 @@ from .navigation import parse_navigation
 from .package import parse_package
 from .resources import ResourceCollection
 from .security import DEFAULT_LIMITS, SecurityLimits
-from .semantics import detect_cover
+from .semantics import classify_document, detect_cover
 from .validation import validate_book
 
 
@@ -71,13 +71,14 @@ class EpubBook:
             raise KeyError(manifest_id)
         if item.media_type not in {"application/xhtml+xml", "text/html"}:
             raise ValueError(f"resource {manifest_id!r} is not an XHTML/HTML document")
-        return extract_xhtml(
+        document = extract_xhtml(
             self._archive.read_bytes(item.resolved_path),
             item,
             structured=structured,
             max_depth=self._archive.limits.max_xml_depth,
             mode=self.mode,
         )
+        return classify_document(self.package, self.navigation, document)
 
     def iter_documents(
         self,
@@ -107,6 +108,7 @@ class EpubBook:
                     blocks=document.blocks,
                     title=document.title,
                     title_source=document.title_source,
+                    semantics=document.semantics,
                 )
             yield document
 

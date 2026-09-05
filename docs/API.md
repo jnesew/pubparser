@@ -26,6 +26,21 @@ Each document contains:
 - `blocks` — optional structured content blocks;
 - `title` — derived display title;
 - `title_source` — rule used to derive the title.
+- `semantics` — non-destructive structural classifications with confidence and evidence.
+
+For example, consumers can omit only confidently identified tables of contents while
+leaving the source EPUB and extracted text unchanged:
+
+```python
+with open_epub("book.epub") as book:
+    for document in book.iter_documents():
+        if document.has_semantic("toc", minimum_confidence=0.9):
+            continue
+        print(document.text)
+```
+
+TOC evidence can come from EPUB navigation/package metadata, explicit XHTML semantics,
+or conservative content heuristics. Consumers choose their own confidence threshold.
 
 Title derivation is deterministic:
 

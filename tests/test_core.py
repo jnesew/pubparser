@@ -244,6 +244,92 @@ def test_iter_text_uses_linear_reading_order_and_skips_non_documents():
         assert [doc.text for doc in book.iter_text(linear_only=False)] == ["A", "B"]
 
 
+def test_toc_document_semantics_use_manifest_and_xhtml_evidence():
+    opf = '''<package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+ <metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>TOC</dc:title></metadata>
+ <manifest>
+  <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+  <item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/>
+ </manifest>
+ <spine><itemref idref="nav"/><itemref idref="chapter"/></spine></package>'''
+    nav = '''<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><body>
+      <nav epub:type="toc"><h1>Contents</h1><ol><li><a href="chapter.xhtml">Chapter</a></li></ol></nav>
+    </body></html>'''
+    chapter = "<html xmlns='http://www.w3.org/1999/xhtml'><body><h1>Chapter</h1><p>Story text.</p></body></html>"
+    with open_epub(make_custom_epub(opf, {"nav.xhtml": nav, "chapter.xhtml": chapter})) as book:
+        documents = tuple(book.iter_documents())
+        toc = documents[0].semantic("toc")
+        assert toc is not None
+        assert toc.confidence == 1.0
+        assert set(toc.evidence) == {
+            "xhtml-semantic-marker",
+            "manifest-nav-property",
+            "navigation-source",
+        }
+        assert not documents[1].has_semantic("toc")
+
+
+def test_toc_document_semantics_use_epub2_guide_reference():
+    opf = '''<package xmlns="http://www.idpf.org/2007/opf" version="2.0">
+ <metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>TOC</dc:title></metadata>
+ <manifest><item id="contents" href="contents.xhtml" media-type="application/xhtml+xml"/></manifest>
+ <spine><itemref idref="contents"/></spine>
+ <guide><reference type="toc" title="Contents" href="contents.xhtml"/></guide></package>'''
+    contents = "<html xmlns='http://www.w3.org/1999/xhtml'><body><h1>Contents</h1></body></html>"
+    with open_epub(make_custom_epub(opf, {"contents.xhtml": contents})) as book:
+        document = next(book.iter_documents())
+        assert document.has_semantic("toc", minimum_confidence=0.9)
+        assert "package-guide-reference" in document.semantic("toc").evidence
+
+
+def test_toc_heuristic_is_high_confidence_only_with_title_and_link_list():
+    opf = '''<package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+ <metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>TOC</dc:title></metadata>
+ <manifest><item id="contents" href="contents.xhtml" media-type="application/xhtml+xml"/></manifest>
+ <spine><itemref idref="contents"/></spine></package>'''
+    contents = '''<html xmlns="http://www.w3.org/1999/xhtml"><body><h1>Contents</h1><ol>
+      <li><a href="one.xhtml">Chapter One</a></li>
+      <li><a href="two.xhtml">Chapter Two</a></li>
+      <li><a href="three.xhtml">Chapter Three</a></li>
+    </ol></body></html>'''
+    with open_epub(make_custom_epub(opf, {"contents.xhtml": contents})) as book:
+        document = next(book.iter_documents())
+        assert document.has_semantic("toc", minimum_confidence=0.9)
+        assert document.semantic("toc").evidence == ("toc-title", "link-list-pattern")
+
+
+def test_toc_title_without_structural_evidence_remains_low_confidence():
+    opf = '''<package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+ <metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>TOC</dc:title></metadata>
+ <manifest><item id="contents" href="contents.xhtml" media-type="application/xhtml+xml"/></manifest>
+ <spine><itemref idref="contents"/></spine></package>'''
+    contents = "<html xmlns='http://www.w3.org/1999/xhtml'><body><h1>Contents</h1><p>A reflective essay.</p></body></html>"
+    with open_epub(make_custom_epub(opf, {"contents.xhtml": contents})) as book:
+        document = next(book.iter_documents())
+        assert document.has_semantic("toc", minimum_confidence=0.65)
+        assert not document.has_semantic("toc", minimum_confidence=0.9)
+
+
+def test_toc_fragment_does_not_classify_a_mixed_document_as_dedicated_toc():
+    opf = '''<package xmlns="http://www.idpf.org/2007/opf" version="2.0">
+ <metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>Mixed</dc:title></metadata>
+ <manifest><item id="mixed" href="mixed.xhtml" media-type="application/xhtml+xml"/></manifest>
+ <spine><itemref idref="mixed"/></spine>
+ <guide><reference type="toc" title="Contents" href="mixed.xhtml#contents"/></guide></package>'''
+    mixed = '''<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><body>
+      <nav id="contents" epub:type="toc"><h1>Contents</h1><a href="#one">One</a></nav>
+      <article><h1 id="one">Chapter One</h1><p>This is a long narrative passage that must not be
+      classified as an entire table-of-contents document merely because a marked TOC fragment precedes it.</p></article>
+    </body></html>'''
+    with open_epub(make_custom_epub(opf, {"mixed.xhtml": mixed})) as book:
+        document = next(book.iter_documents())
+        semantic = document.semantic("toc")
+        assert semantic is not None
+        assert semantic.confidence == 0.6
+        assert set(semantic.evidence) == {"xhtml-toc-fragment", "package-guide-fragment"}
+        assert not document.has_semantic("toc", minimum_confidence=0.9)
+
+
 def test_validation_reports_missing_resource_and_required_metadata():
     opf = '''<package xmlns="http://www.idpf.org/2007/opf" version="3.0">
  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>Validation</dc:title></metadata>
